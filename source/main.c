@@ -1,107 +1,108 @@
 /**
  * Meta Hunter - GBA Roguelite Game
- * main.c - MINIMAL TEST VERSION
+ * main.c - MINIMAL TEST using libtonc properly
  */
 
 #include <tonc.h>
-#include "game.h"
-#include "player.h"
-#include "enemy.h"
-#include "combat.h"
-#include "sprites.h"
 
-// =============================================================================
-// GLOBAL GAME CONTEXT
-// =============================================================================
-GameContext g_game;
+// OAM buffer
+OBJ_ATTR obj_buffer[128];
 
-// =============================================================================
-// MAIN ENTRY POINT - MINIMAL SPRITE TEST
-// =============================================================================
 int main(void) {
-    // Initialize interrupts
+    // Initialize libtonc interrupt system
     irq_init(NULL);
     irq_enable(II_VBLANK);
 
-    // Set display mode: Mode 0 with OBJ enabled, 1D mapping
+    // Set display: Mode 0, enable sprites, 1D sprite mapping
     REG_DISPCNT = DCNT_MODE0 | DCNT_OBJ | DCNT_OBJ_1D;
 
-    // Initialize OAM buffer
+    // Initialize OAM (hides all sprites)
     oam_init(obj_buffer, 128);
 
     // =========================================================================
-    // SET UP A SIMPLE SPRITE DIRECTLY (bypass sprites_init for testing)
+    // SET UP SPRITE PALETTE
     // =========================================================================
+    // Use memset16/memset32 for VRAM writes (libtonc safe functions)
 
-    // Set palette color 1 to bright magenta (very visible)
-    pal_obj_mem[0] = RGB15(0, 0, 0);      // Color 0: transparent
-    pal_obj_mem[1] = RGB15(31, 0, 31);    // Color 1: bright magenta
-    pal_obj_mem[2] = RGB15(31, 31, 0);    // Color 2: yellow
-    pal_obj_mem[3] = RGB15(0, 31, 0);     // Color 3: green
+    // Palette bank 0 for sprites
+    pal_obj_bank[0][0] = CLR_BLACK;           // Color 0: transparent
+    pal_obj_bank[0][1] = CLR_MAG;             // Color 1: magenta
+    pal_obj_bank[0][2] = CLR_YELLOW;          // Color 2: yellow
+    pal_obj_bank[0][3] = CLR_LIME;            // Color 3: lime green
 
-    // Create a solid 8x8 tile at tile 0
-    // In 4bpp, each row is 8 pixels, each pixel is 4 bits = 32 bits total
-    // Fill with color index 1 (magenta)
-    u32 solid_row = 0x11111111;  // 8 pixels of color 1
+    // =========================================================================
+    // CREATE SPRITE TILE DATA
+    // =========================================================================
+    // For 4bpp sprites, each tile is 32 bytes (8 rows * 4 bytes per row)
+    // Each pixel is 4 bits, so 8 pixels = 32 bits = 1 word per row
 
-    // Write to OBJ tile memory (tile 0)
-    u32* tile0 = (u32*)tile_mem_obj[0];
+    // Create a solid color tile using the TILE structure
+    // tile_mem_obj[charblock][tile_index]
+    // We'll use charblock 0, tiles 0-3 for a 16x16 sprite
+
+    TILE solid_tile;
+    // Fill all 8 rows with color index 1 (magenta)
+    // 0x11111111 = 8 pixels, each with color index 1
     for (int i = 0; i < 8; i++) {
-        tile0[i] = solid_row;
+        solid_tile.data[i] = 0x11111111;
     }
 
-    // Also create tiles 1, 2, 3 for 16x16 sprite
-    u32* tile1 = (u32*)&tile_mem_obj[0][1];
-    u32* tile2 = (u32*)&tile_mem_obj[0][2];
-    u32* tile3 = (u32*)&tile_mem_obj[0][3];
+    // Copy tile data to OBJ VRAM (tiles 0, 1, 2, 3)
+    tile_mem_obj[0][0] = solid_tile;
+    tile_mem_obj[0][1] = solid_tile;
+    tile_mem_obj[0][2] = solid_tile;
+    tile_mem_obj[0][3] = solid_tile;
+
+    // Also create a different colored tile for testing
+    TILE yellow_tile;
     for (int i = 0; i < 8; i++) {
-        tile1[i] = solid_row;
-        tile2[i] = solid_row;
-        tile3[i] = solid_row;
+        yellow_tile.data[i] = 0x22222222;  // Color index 2 (yellow)
     }
+    tile_mem_obj[0][4] = yellow_tile;
 
-    // Set up OAM entry 0 as a 16x16 sprite at position (100, 70)
-    OBJ_ATTR* sprite = &obj_buffer[0];
-    sprite->attr0 = ATTR0_Y(70) | ATTR0_SQUARE | ATTR0_4BPP;
-    sprite->attr1 = ATTR1_X(100) | ATTR1_SIZE_16;
-    sprite->attr2 = ATTR2_ID(0) | ATTR2_PALBANK(0);
+    // =========================================================================
+    // SET UP SPRITE IN OAM
+    // =========================================================================
+    // Sprite 0: 16x16 magenta square at (100, 70)
+    obj_set_attr(&obj_buffer[0],
+        ATTR0_SQUARE | ATTR0_4BPP,      // Square shape, 4bpp color
+        ATTR1_SIZE_16,                   // 16x16 pixels
+        ATTR2_PALBANK(0) | 0);           // Palette 0, tile 0
+    obj_set_pos(&obj_buffer[0], 100, 70);
 
-    // Also set up an 8x8 sprite at OAM entry 1 for comparison
-    OBJ_ATTR* sprite2 = &obj_buffer[1];
-    sprite2->attr0 = ATTR0_Y(50) | ATTR0_SQUARE | ATTR0_4BPP;
-    sprite2->attr1 = ATTR1_X(50) | ATTR1_SIZE_8;
-    sprite2->attr2 = ATTR2_ID(0) | ATTR2_PALBANK(0);
+    // Sprite 1: 8x8 yellow square at (50, 50)
+    obj_set_attr(&obj_buffer[1],
+        ATTR0_SQUARE | ATTR0_4BPP,
+        ATTR1_SIZE_8,
+        ATTR2_PALBANK(0) | 4);           // Palette 0, tile 4
+    obj_set_pos(&obj_buffer[1], 50, 50);
 
-    // Copy OAM buffer to hardware OAM
+    // Copy to hardware OAM
     oam_copy(oam_mem, obj_buffer, 128);
 
     // =========================================================================
-    // SIMPLE GAME LOOP
+    // GAME LOOP
     // =========================================================================
-    int x = 100;
-    int y = 70;
+    int x = 100, y = 70;
 
     while (1) {
         VBlankIntrWait();
         key_poll();
 
-        // Move sprite with D-pad
-        if (key_is_down(KEY_LEFT) && x > 0) x -= 2;
-        if (key_is_down(KEY_RIGHT) && x < 224) x += 2;
-        if (key_is_down(KEY_UP) && y > 0) y -= 2;
-        if (key_is_down(KEY_DOWN) && y < 144) y += 2;
+        // Move with D-pad
+        x += key_tri_horz() * 2;  // Returns -1, 0, or 1
+        y += key_tri_vert() * 2;
 
-        // Update sprite position
+        // Clamp to screen
+        x = clamp(x, 0, 240 - 16);
+        y = clamp(y, 0, 160 - 16);
+
+        // Update position
         obj_set_pos(&obj_buffer[0], x, y);
 
-        // Copy OAM to hardware
+        // Copy OAM
         oam_copy(oam_mem, obj_buffer, 128);
     }
 
     return 0;
-}
-
-// Stub to satisfy linker
-void game_set_state(GameState new_state) {
-    g_game.state = new_state;
 }
