@@ -1,159 +1,126 @@
 /**
  * Meta Hunter - GBA Roguelite Game
- * sprites.c - Sprite initialization with simple debug graphics
+ * sprites.c - Sprite graphics using libtonc TILE structure
  */
 
 #include <tonc.h>
 #include "sprites.h"
 
 // =============================================================================
-// OAM BUFFER
+// OAM BUFFER (global, used by all rendering code)
 // =============================================================================
 OBJ_ATTR obj_buffer[128];
-
-// =============================================================================
-// HELPER: Fill an 8x8 4bpp tile with a solid color
-// =============================================================================
-static void fill_tile(u32* tile, u8 color) {
-    // In 4bpp, each pixel is 4 bits, so 8 pixels = 32 bits = 1 u32 per row
-    // To fill with color 'c', we need: c | (c<<4) | (c<<8) | ... for 8 pixels
-    u32 row = color | (color << 4) | (color << 8) | (color << 12) |
-              (color << 16) | (color << 20) | (color << 24) | (color << 28);
-    for (int i = 0; i < 8; i++) {
-        tile[i] = row;
-    }
-}
-
-// =============================================================================
-// HELPER: Create a simple bordered square sprite (16x16 = 4 tiles)
-// =============================================================================
-static void create_box_sprite(int tile_index, u8 fill_color, u8 border_color) {
-    // Get pointer to the 4 tiles (each 8x8 tile is 8 u32s in 4bpp)
-    u32* tiles = (u32*)&tile_mem_obj[0][tile_index];
-
-    // Create the fill and border row patterns
-    u32 fill_row = fill_color | (fill_color << 4) | (fill_color << 8) | (fill_color << 12) |
-                   (fill_color << 16) | (fill_color << 20) | (fill_color << 24) | (fill_color << 28);
-    u32 border_row = border_color | (border_color << 4) | (border_color << 8) | (border_color << 12) |
-                     (border_color << 16) | (border_color << 20) | (border_color << 24) | (border_color << 28);
-
-    // Mixed row: border on edges, fill in middle
-    // For an 8-pixel row: B B F F F F B B
-    u32 mixed_row = border_color | (border_color << 4) |
-                    (fill_color << 8) | (fill_color << 12) | (fill_color << 16) | (fill_color << 20) |
-                    (border_color << 24) | (border_color << 28);
-
-    // Top-left tile (0): top-left corner
-    tiles[0] = border_row;  // Top edge
-    tiles[1] = border_row;
-    tiles[2] = mixed_row;
-    tiles[3] = mixed_row;
-    tiles[4] = mixed_row;
-    tiles[5] = mixed_row;
-    tiles[6] = mixed_row;
-    tiles[7] = mixed_row;
-
-    // Top-right tile (1): top-right corner
-    tiles[8] = border_row;
-    tiles[9] = border_row;
-    tiles[10] = mixed_row;
-    tiles[11] = mixed_row;
-    tiles[12] = mixed_row;
-    tiles[13] = mixed_row;
-    tiles[14] = mixed_row;
-    tiles[15] = mixed_row;
-
-    // Bottom-left tile (2): bottom-left corner
-    tiles[16] = mixed_row;
-    tiles[17] = mixed_row;
-    tiles[18] = mixed_row;
-    tiles[19] = mixed_row;
-    tiles[20] = mixed_row;
-    tiles[21] = mixed_row;
-    tiles[22] = border_row;
-    tiles[23] = border_row;
-
-    // Bottom-right tile (3): bottom-right corner
-    tiles[24] = mixed_row;
-    tiles[25] = mixed_row;
-    tiles[26] = mixed_row;
-    tiles[27] = mixed_row;
-    tiles[28] = mixed_row;
-    tiles[29] = mixed_row;
-    tiles[30] = border_row;
-    tiles[31] = border_row;
-}
-
-// =============================================================================
-// HELPER: Create a small 8x8 filled circle for projectiles
-// =============================================================================
-static void create_circle_tile(int tile_index, u8 color) {
-    u32* tile = (u32*)&tile_mem_obj[0][tile_index];
-
-    // Simple circle pattern (0 = transparent, color = filled)
-    // Row 0: ..XX..
-    tile[0] = (color << 8) | (color << 12) | (color << 16) | (color << 20);
-    // Row 1: .XXXX.
-    tile[1] = (color << 4) | (color << 8) | (color << 12) | (color << 16) | (color << 20) | (color << 24);
-    // Row 2-5: XXXXXX
-    u32 full = color | (color << 4) | (color << 8) | (color << 12) | (color << 16) | (color << 20) | (color << 24) | (color << 28);
-    tile[2] = full;
-    tile[3] = full;
-    tile[4] = full;
-    tile[5] = full;
-    // Row 6: .XXXX.
-    tile[6] = (color << 4) | (color << 8) | (color << 12) | (color << 16) | (color << 20) | (color << 24);
-    // Row 7: ..XX..
-    tile[7] = (color << 8) | (color << 12) | (color << 16) | (color << 20);
-}
 
 // =============================================================================
 // SPRITE INITIALIZATION
 // =============================================================================
 void sprites_init(void) {
-    // Initialize OAM buffer (all sprites hidden)
+    // Initialize OAM
     oam_init(obj_buffer, 128);
 
     // =========================================================================
-    // SET UP SPRITE PALETTES
+    // SPRITE PALETTES
     // =========================================================================
-    // Palette 0: Player (bright cyan on black)
-    pal_obj_mem[0] = RGB15(0, 0, 0);        // Transparent (black)
-    pal_obj_mem[1] = RGB15(0, 31, 31);      // Bright cyan (main)
-    pal_obj_mem[2] = RGB15(31, 31, 31);     // White (border/highlight)
-    pal_obj_mem[3] = RGB15(0, 16, 16);      // Dark cyan
+    // Palette 0: Player (cyan)
+    pal_obj_bank[0][0] = CLR_BLACK;          // Transparent
+    pal_obj_bank[0][1] = RGB15(0, 28, 31);   // Cyan
+    pal_obj_bank[0][2] = CLR_WHITE;          // White border
+    pal_obj_bank[0][3] = RGB15(0, 16, 20);   // Dark cyan
 
-    // Palette 1: Enemy (bright red)
-    pal_obj_mem[16 + 0] = RGB15(0, 0, 0);   // Transparent
-    pal_obj_mem[16 + 1] = RGB15(31, 8, 8);  // Bright red (main)
-    pal_obj_mem[16 + 2] = RGB15(31, 31, 31);// White (border)
-    pal_obj_mem[16 + 3] = RGB15(16, 0, 0);  // Dark red
+    // Palette 1: Enemy (red)
+    pal_obj_bank[1][0] = CLR_BLACK;
+    pal_obj_bank[1][1] = RGB15(31, 8, 8);    // Red
+    pal_obj_bank[1][2] = CLR_WHITE;
+    pal_obj_bank[1][3] = RGB15(20, 0, 0);    // Dark red
 
-    // Palette 2: White flash
-    pal_obj_mem[32 + 0] = RGB15(0, 0, 0);
-    pal_obj_mem[32 + 1] = RGB15(31, 31, 31);
-    pal_obj_mem[32 + 2] = RGB15(31, 31, 31);
-    pal_obj_mem[32 + 3] = RGB15(31, 31, 31);
+    // Palette 2: Hit flash (white)
+    pal_obj_bank[2][0] = CLR_BLACK;
+    pal_obj_bank[2][1] = CLR_WHITE;
+    pal_obj_bank[2][2] = CLR_WHITE;
+    pal_obj_bank[2][3] = CLR_WHITE;
 
     // =========================================================================
     // CREATE SPRITE TILES
     // =========================================================================
 
-    // Player sprite: cyan box with white border (tiles 0-3)
-    create_box_sprite(SPRITE_PLAYER_BASE, 1, 2);  // fill=cyan(1), border=white(2)
+    // --- PLAYER (tiles 0-3): Cyan square with white border ---
+    TILE player_tl, player_tr, player_bl, player_br;
 
-    // Enemy Worm: red box with white border (tiles 16-19)
-    create_box_sprite(SPRITE_ENEMY_WORM, 1, 2);
+    // Top-left: border on top and left
+    player_tl.data[0] = 0x22222222;  // Top border row
+    player_tl.data[1] = 0x21111112;
+    player_tl.data[2] = 0x21111112;
+    player_tl.data[3] = 0x21111112;
+    player_tl.data[4] = 0x21111112;
+    player_tl.data[5] = 0x21111112;
+    player_tl.data[6] = 0x21111112;
+    player_tl.data[7] = 0x21111112;
 
-    // Enemy Trojan: red box (tiles 24-27)
-    create_box_sprite(SPRITE_ENEMY_TROJAN, 1, 2);
+    // Top-right: border on top and right
+    player_tr.data[0] = 0x22222222;
+    player_tr.data[1] = 0x21111112;
+    player_tr.data[2] = 0x21111112;
+    player_tr.data[3] = 0x21111112;
+    player_tr.data[4] = 0x21111112;
+    player_tr.data[5] = 0x21111112;
+    player_tr.data[6] = 0x21111112;
+    player_tr.data[7] = 0x21111112;
 
-    // Enemy Turret: red box (tiles 32-35) - same for now
-    create_box_sprite(SPRITE_ENEMY_TURRET, 1, 2);
+    // Bottom-left: border on bottom and left
+    player_bl.data[0] = 0x21111112;
+    player_bl.data[1] = 0x21111112;
+    player_bl.data[2] = 0x21111112;
+    player_bl.data[3] = 0x21111112;
+    player_bl.data[4] = 0x21111112;
+    player_bl.data[5] = 0x21111112;
+    player_bl.data[6] = 0x21111112;
+    player_bl.data[7] = 0x22222222;  // Bottom border row
 
-    // Player projectile: small cyan circle (tile 40)
-    create_circle_tile(SPRITE_PROJECTILE_PLAYER, 1);
+    // Bottom-right: border on bottom and right
+    player_br.data[0] = 0x21111112;
+    player_br.data[1] = 0x21111112;
+    player_br.data[2] = 0x21111112;
+    player_br.data[3] = 0x21111112;
+    player_br.data[4] = 0x21111112;
+    player_br.data[5] = 0x21111112;
+    player_br.data[6] = 0x21111112;
+    player_br.data[7] = 0x22222222;
 
-    // Enemy projectile: small red circle (tile 41)
-    create_circle_tile(SPRITE_PROJECTILE_ENEMY, 1);
+    tile_mem_obj[0][SPRITE_PLAYER_BASE + 0] = player_tl;
+    tile_mem_obj[0][SPRITE_PLAYER_BASE + 1] = player_tr;
+    tile_mem_obj[0][SPRITE_PLAYER_BASE + 2] = player_bl;
+    tile_mem_obj[0][SPRITE_PLAYER_BASE + 3] = player_br;
+
+    // --- ENEMY WORM (tiles 16-19): Red square with white border ---
+    // Reuse same pattern, will use different palette
+    tile_mem_obj[0][SPRITE_ENEMY_WORM + 0] = player_tl;
+    tile_mem_obj[0][SPRITE_ENEMY_WORM + 1] = player_tr;
+    tile_mem_obj[0][SPRITE_ENEMY_WORM + 2] = player_bl;
+    tile_mem_obj[0][SPRITE_ENEMY_WORM + 3] = player_br;
+
+    // --- ENEMY TROJAN (tiles 24-27): Same pattern, larger feel from palette ---
+    tile_mem_obj[0][SPRITE_ENEMY_TROJAN + 0] = player_tl;
+    tile_mem_obj[0][SPRITE_ENEMY_TROJAN + 1] = player_tr;
+    tile_mem_obj[0][SPRITE_ENEMY_TROJAN + 2] = player_bl;
+    tile_mem_obj[0][SPRITE_ENEMY_TROJAN + 3] = player_br;
+
+    // --- ENEMY TURRET (tiles 32-35) ---
+    tile_mem_obj[0][SPRITE_ENEMY_TURRET + 0] = player_tl;
+    tile_mem_obj[0][SPRITE_ENEMY_TURRET + 1] = player_tr;
+    tile_mem_obj[0][SPRITE_ENEMY_TURRET + 2] = player_bl;
+    tile_mem_obj[0][SPRITE_ENEMY_TURRET + 3] = player_br;
+
+    // --- PROJECTILE (tile 40): Small 8x8 filled circle ---
+    TILE proj_tile;
+    proj_tile.data[0] = 0x00111100;
+    proj_tile.data[1] = 0x01111110;
+    proj_tile.data[2] = 0x11111111;
+    proj_tile.data[3] = 0x11111111;
+    proj_tile.data[4] = 0x11111111;
+    proj_tile.data[5] = 0x11111111;
+    proj_tile.data[6] = 0x01111110;
+    proj_tile.data[7] = 0x00111100;
+
+    tile_mem_obj[0][SPRITE_PROJECTILE_PLAYER] = proj_tile;
+    tile_mem_obj[0][SPRITE_PROJECTILE_ENEMY] = proj_tile;
 }
