@@ -4,9 +4,9 @@
  */
 
 #include <tonc.h>
+#include "sprites.h"
 
-// OAM buffer
-OBJ_ATTR obj_buffer[128];
+// obj_buffer is defined in sprites.c, declared extern in sprites.h
 
 int main(void) {
     // Initialize libtonc interrupt system
