@@ -1,8 +1,6 @@
 /**
  * Meta Hunter - GBA Roguelite Game
- * main.c - Entry point and main game loop
- *
- * PHASE 1 PROTOTYPE - Simplified for testing
+ * main.c - MINIMAL TEST VERSION
  */
 
 #include <tonc.h>
@@ -18,195 +16,92 @@
 GameContext g_game;
 
 // =============================================================================
-// INITIALIZE BACKGROUND (simple solid color)
+// MAIN ENTRY POINT - MINIMAL SPRITE TEST
 // =============================================================================
-static void init_background(void) {
-    // Set up BG0 as a simple tiled background
-    // Use charblock 0 for tiles, screenblock 31 for map
-    REG_BG0CNT = BG_CBB(0) | BG_SBB(31) | BG_4BPP | BG_REG_32x32;
-
-    // Create a simple solid tile (8x8 pixels, all one color)
-    // In 4bpp mode, each tile is 32 bytes (8x8 pixels, 4 bits each)
-    u32* tile = (u32*)&tile_mem[0][1];  // Tile 1 (tile 0 is transparent)
-    for (int i = 0; i < 8; i++) {
-        tile[i] = 0x11111111;  // All pixels use palette color 1
-    }
-
-    // Set BG palette
-    pal_bg_mem[0] = RGB15(0, 0, 0);      // Color 0: Black (transparent)
-    pal_bg_mem[1] = RGB15(2, 2, 6);      // Color 1: Dark blue (floor)
-
-    // Fill the screen map with tile 1
-    u16* map = (u16*)se_mem[31];
-    for (int i = 0; i < 32 * 32; i++) {
-        map[i] = 1;  // Use tile 1
-    }
-
-    // Create wall tiles (brighter color)
-    u32* wall_tile = (u32*)&tile_mem[0][2];  // Tile 2 for walls
-    for (int i = 0; i < 8; i++) {
-        wall_tile[i] = 0x22222222;  // All pixels use palette color 2
-    }
-    pal_bg_mem[2] = RGB15(8, 8, 12);  // Lighter blue-gray for walls
-
-    // Draw border walls
-    for (int x = 0; x < 30; x++) {
-        map[x] = 2;              // Top wall
-        map[19 * 32 + x] = 2;    // Bottom wall
-    }
-    for (int y = 0; y < 20; y++) {
-        map[y * 32] = 2;         // Left wall
-        map[y * 32 + 29] = 2;    // Right wall
-    }
-}
-
-// =============================================================================
-// GAME INITIALIZATION
-// =============================================================================
-void game_init(void) {
+int main(void) {
     // Initialize interrupts
     irq_init(NULL);
     irq_enable(II_VBLANK);
 
-    // Set display mode: Mode 0 with BG0 and sprites
-    REG_DISPCNT = DCNT_MODE0 | DCNT_BG0 | DCNT_OBJ | DCNT_OBJ_1D;
+    // Set display mode: Mode 0 with OBJ enabled, 1D mapping
+    REG_DISPCNT = DCNT_MODE0 | DCNT_OBJ | DCNT_OBJ_1D;
 
-    // Initialize OAM (hide all sprites initially)
+    // Initialize OAM buffer
     oam_init(obj_buffer, 128);
 
-    // Set up background
-    init_background();
+    // =========================================================================
+    // SET UP A SIMPLE SPRITE DIRECTLY (bypass sprites_init for testing)
+    // =========================================================================
 
-    // Load sprite palettes and tiles
-    sprites_init();
+    // Set palette color 1 to bright magenta (very visible)
+    pal_obj_mem[0] = RGB15(0, 0, 0);      // Color 0: transparent
+    pal_obj_mem[1] = RGB15(31, 0, 31);    // Color 1: bright magenta
+    pal_obj_mem[2] = RGB15(31, 31, 0);    // Color 2: yellow
+    pal_obj_mem[3] = RGB15(0, 31, 0);     // Color 3: green
 
-    // Initialize subsystems
-    projectile_init_system();
-    enemy_init_system();
+    // Create a solid 8x8 tile at tile 0
+    // In 4bpp, each row is 8 pixels, each pixel is 4 bits = 32 bits total
+    // Fill with color index 1 (magenta)
+    u32 solid_row = 0x11111111;  // 8 pixels of color 1
 
-    // Initialize game context
-    g_game.state = STATE_PLAYING;
-    g_game.frame_count = 0;
-    g_game.data_fragments = 0;
-    g_game.current_room = 0;
-    g_game.rooms_cleared = 0;
-
-    // Initialize player in center of room
-    player_init(SCREEN_WIDTH / 2 - 8, SCREEN_HEIGHT / 2 - 8);
-
-    // Spawn test enemies
-    enemy_spawn(ENEMY_WORM, 40, 40);
-    enemy_spawn(ENEMY_WORM, 180, 40);
-    enemy_spawn(ENEMY_TROJAN, 100, 120);
-    enemy_set_patrol(2, 60, 100, 160, 130);
-}
-
-// =============================================================================
-// RESTART GAME
-// =============================================================================
-static void restart_game(void) {
-    g_game.data_fragments = 0;
-    g_game.rooms_cleared = 0;
-    g_game.state = STATE_PLAYING;
-
-    // Reset player
-    player_init(SCREEN_WIDTH / 2 - 8, SCREEN_HEIGHT / 2 - 8);
-
-    // Reset enemies and projectiles
-    enemy_init_system();
-    projectile_init_system();
-
-    // Spawn new enemies
-    enemy_spawn(ENEMY_WORM, 40, 40);
-    enemy_spawn(ENEMY_WORM, 180, 40);
-    enemy_spawn(ENEMY_TROJAN, 100, 120);
-    enemy_set_patrol(2, 60, 100, 160, 130);
-}
-
-// =============================================================================
-// UPDATE GAMEPLAY
-// =============================================================================
-static void update_playing(void) {
-    // Update player
-    player_update();
-
-    // Update enemies
-    enemy_update_all();
-
-    // Update projectiles
-    projectile_update_all();
-
-    // Check collisions
-    collision_check_projectiles();
-    collision_check_player_enemies();
-
-    // Check win condition: all enemies dead
-    if (enemy_count_active() == 0) {
-        // Spawn more enemies for now (endless mode)
-        g_game.rooms_cleared++;
-        g_game.data_fragments += 100;
-
-        // Spawn new wave
-        enemy_spawn(ENEMY_WORM, 30 + (g_game.rooms_cleared * 10) % 100, 40);
-        enemy_spawn(ENEMY_WORM, 180 - (g_game.rooms_cleared * 10) % 80, 50);
-        if (g_game.rooms_cleared >= 2) {
-            enemy_spawn(ENEMY_TROJAN, 120, 100);
-        }
+    // Write to OBJ tile memory (tile 0)
+    u32* tile0 = (u32*)tile_mem_obj[0];
+    for (int i = 0; i < 8; i++) {
+        tile0[i] = solid_row;
     }
 
-    // Check game over: player dead
-    if (g_player.hp <= 0) {
-        g_game.state = STATE_GAMEOVER;
+    // Also create tiles 1, 2, 3 for 16x16 sprite
+    u32* tile1 = (u32*)&tile_mem_obj[0][1];
+    u32* tile2 = (u32*)&tile_mem_obj[0][2];
+    u32* tile3 = (u32*)&tile_mem_obj[0][3];
+    for (int i = 0; i < 8; i++) {
+        tile1[i] = solid_row;
+        tile2[i] = solid_row;
+        tile3[i] = solid_row;
     }
-}
 
-// =============================================================================
-// UPDATE GAME OVER
-// =============================================================================
-static void update_gameover(void) {
-    // Flash screen red briefly, then restart on button press
-    if (key_hit(KEY_A) || key_hit(KEY_START)) {
-        restart_game();
-    }
-}
+    // Set up OAM entry 0 as a 16x16 sprite at position (100, 70)
+    OBJ_ATTR* sprite = &obj_buffer[0];
+    sprite->attr0 = ATTR0_Y(70) | ATTR0_SQUARE | ATTR0_4BPP;
+    sprite->attr1 = ATTR1_X(100) | ATTR1_SIZE_16;
+    sprite->attr2 = ATTR2_ID(0) | ATTR2_PALBANK(0);
 
-// =============================================================================
-// MAIN ENTRY POINT
-// =============================================================================
-int main(void) {
-    // Initialize game
-    game_init();
+    // Also set up an 8x8 sprite at OAM entry 1 for comparison
+    OBJ_ATTR* sprite2 = &obj_buffer[1];
+    sprite2->attr0 = ATTR0_Y(50) | ATTR0_SQUARE | ATTR0_4BPP;
+    sprite2->attr1 = ATTR1_X(50) | ATTR1_SIZE_8;
+    sprite2->attr2 = ATTR2_ID(0) | ATTR2_PALBANK(0);
 
-    // Main game loop
+    // Copy OAM buffer to hardware OAM
+    oam_copy(oam_mem, obj_buffer, 128);
+
+    // =========================================================================
+    // SIMPLE GAME LOOP
+    // =========================================================================
+    int x = 100;
+    int y = 70;
+
     while (1) {
-        // Wait for VBlank
         VBlankIntrWait();
-
-        // Poll input
         key_poll();
 
-        // Update based on state
-        if (g_game.state == STATE_PLAYING) {
-            update_playing();
-        } else if (g_game.state == STATE_GAMEOVER) {
-            update_gameover();
-        }
+        // Move sprite with D-pad
+        if (key_is_down(KEY_LEFT) && x > 0) x -= 2;
+        if (key_is_down(KEY_RIGHT) && x < 224) x += 2;
+        if (key_is_down(KEY_UP) && y > 0) y -= 2;
+        if (key_is_down(KEY_DOWN) && y < 144) y += 2;
 
-        // Render sprites
-        player_render();
-        enemy_render_all();
-        projectile_render_all();
+        // Update sprite position
+        obj_set_pos(&obj_buffer[0], x, y);
 
-        // Copy OAM buffer to hardware
+        // Copy OAM to hardware
         oam_copy(oam_mem, obj_buffer, 128);
-
-        g_game.frame_count++;
     }
 
     return 0;
 }
 
-// Stub functions to satisfy linker (puzzle disabled for now)
+// Stub to satisfy linker
 void game_set_state(GameState new_state) {
     g_game.state = new_state;
 }
