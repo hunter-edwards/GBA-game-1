@@ -312,11 +312,8 @@ void enemy_render_all(void) {
             palette = 2; // White flash palette
         }
 
-        // Animation frame offset
-        tile_base += e->anim_frame * 4;
-
-        // Set attributes
-        obj->attr0 = ATTR0_Y(y) | ATTR0_SQUARE | ATTR0_4BPP | ATTR0_REG;
+        // Set attributes (no animation offset - use base tile only)
+        obj->attr0 = ATTR0_Y(y) | ATTR0_SQUARE | ATTR0_4BPP;
         obj->attr1 = ATTR1_X(x) | ATTR1_SIZE_16;
 
         // Flip based on movement direction
