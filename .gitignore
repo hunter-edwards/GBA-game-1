@@ -1,0 +1,27 @@
+# Build output
+build/
+*.gba
+*.elf
+*.map
+*.sav
+
+# Object files
+*.o
+*.d
+
+# Generated headers
+*_bin.h
+
+# IDE files
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Emulator save states
+*.sgm
+*.ss*
